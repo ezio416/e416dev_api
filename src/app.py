@@ -2,6 +2,7 @@
 # m 2024-03-27
 
 from base64 import b64encode
+from datetime import datetime as dt
 from json import loads
 from math import ceil
 import os
@@ -10,9 +11,10 @@ from time import sleep
 
 from dateutil.parser import parse
 from discord_webhook import DiscordEmbed, DiscordWebhook
+from pytz import timezone as tz
 from requests import get, post
 
-from util import format_race_time, log, strip_format_codes
+from util import format_race_time, log, now, strip_format_codes
 
 
 db_file:       str   = f'{os.path.dirname(__file__)}/../tm.db'
@@ -442,7 +444,7 @@ def write_zones(zones: dict) -> None:
     log('wrote zones to database')
 
 
-def main() -> None:
+def run() -> None:
     tokens: dict = get_tokens()
 
     totd_maps: dict = get_totd_maps(tokens)
@@ -474,6 +476,37 @@ def main() -> None:
 
     write_campaign_maps(get_campaign_maps(tokens))
     write_zones(get_zones(tokens))
+
+
+def main() -> None:
+    attempts:              int = 10
+    wait_between_attempts: int = 10
+
+    while True:
+        now_paris = dt.now(tz('Europe/Paris'))
+
+        if now_paris.hour == 19 and now_paris.minute == 0:
+            for i in range(attempts):
+                try:
+                    run()
+                    break
+                except Exception as e:
+                    log(f'ERROR: {e} | attempt {i + 1}/{attempts} failed, waiting {wait_between_attempts} seconds')
+                    sleep(wait_between_attempts)
+
+                if i == attempts - 1:
+                    log('ERROR: max attempts reached')
+
+                    DiscordWebhook(
+                        os.environ['TM_TOTD_NOTIF_DISCORD_WEBHOOK_URL'],
+                        content='<@174350279158792192> ERROR: CHECK SERVER LOGS'
+                    ).execute()
+
+            # print('waiting 60 seconds')
+            sleep(60)
+        else:
+            # print(f'{now()} waiting')
+            sleep(1)
 
 
 if __name__ == '__main__':
