@@ -2,13 +2,13 @@
 # m 2024-03-27
 
 from base64 import b64encode
-from dateutil.parser import parse
 from json import loads
 from math import ceil
 import os
 import sqlite3 as sql
 from time import sleep
 
+from dateutil.parser import parse
 from discord_webhook import DiscordEmbed, DiscordWebhook
 from requests import get, post
 
