@@ -250,6 +250,22 @@ def get_zones(tokens: dict) -> dict:
             'parent': key['parentId'],
         }
 
+    sep: str = '|'
+
+    for id in zones:
+        name: str = zones[id]['name']
+
+        if (parent_id := zones[id]['parent']):
+            name += f'{sep}{zones[parent_id]['name']}'
+            if (g0parent_id := zones[parent_id]['parent']):
+                name += f'{sep}{zones[g0parent_id]['name']}'
+                if (g1parent_id := zones[g0parent_id]['parent']):
+                    name += f'{sep}{zones[g1parent_id]['name']}'
+                    if (g2parent_id := zones[g1parent_id]['parent']):
+                        name += f'{sep}{zones[g2parent_id]['name']}'
+
+        zones[id]['nameFull'] = name.split(f'{sep}World')[0]
+
     log('got zones')
 
     return zones
@@ -422,9 +438,10 @@ def write_zones(zones: dict) -> None:
         cur.execute('DROP TABLE IF EXISTS Zones')
         cur.execute(f'''
             CREATE TABLE IF NOT EXISTS Zones (
-                id     CHAR(36) PRIMARY KEY,
-                name   TEXT,
-                parent CHAR(36)
+                id       CHAR(36) PRIMARY KEY,
+                name     TEXT,
+                nameFull TEXT,
+                parent   CHAR(36)
             );
         ''')
 
@@ -433,10 +450,12 @@ def write_zones(zones: dict) -> None:
                 INSERT INTO ZONES (
                     id,
                     name,
+                    nameFull,
                     parent
                 ) VALUES (
                     "{id}",
                     "{zones[id]['name']}",
+                    "{zones[id]['nameFull']}",
                     "{zones[id]['parent']}"
                 )
             ''')
