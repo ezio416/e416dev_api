@@ -12,11 +12,12 @@ from time import sleep
 from discord_webhook import DiscordEmbed, DiscordWebhook
 from requests import get, post
 
-from util import log, strip_format_codes
+from util import format_race_time, log, strip_format_codes
 
 
 db_file:       str   = f'{__file__}/../../tm.db'
 tm2020_app_id: str   = '86263886-327a-4328-ac69-527f0d20a237'
+uid_file:      str   = f'{__file__}/../../latest_totd.txt'
 url_core:      str   = 'https://prod.trackmania.core.nadeo.online'
 url_live:      str   = 'https://live-services.trackmania.nadeo.live'
 wait_time:     float = 0.5
@@ -252,6 +253,21 @@ def get_zones(tokens: dict) -> dict:
     return zones
 
 
+def map_is_new(uid: str) -> bool:
+    if os.path.isfile(uid_file):
+        with open(uid_file, 'r') as f:
+            last_uid: str = f.read().strip('\n')
+
+        if uid == last_uid:
+            return False
+
+    else:
+        with open(uid_file, 'w', newline='\n') as f:
+            f.write(f'{uid}\n')
+
+    return True
+
+
 def write_campaign_maps(campaign_maps: dict) -> None:
     log('writing campaign maps to database')
 
@@ -431,7 +447,28 @@ def main() -> None:
 
     totd_maps: dict = get_totd_maps(tokens)
 
+    latest_totd: dict = totd_maps[list(totd_maps)[-1]]
 
+    if (map_is_new(latest_totd['uid'])):
+        webhook = DiscordWebhook(
+            os.environ['TM_TOTD_NOTIF_DISCORD_WEBHOOK_URL'],
+            content='<@&1205378175601745970>'
+        )
+
+        embed = DiscordEmbed(
+            title=f'Track of the Day for {latest_totd['date']}',
+            color='00a719'
+        )
+
+        embed.add_embed_field('Map', f'[{latest_totd['nameClean']}](https://trackmania.io/#/totd/leaderboard/{latest_totd['season']}/{latest_totd['uid']})', False)
+        embed.add_embed_field('Author', f'[{get_account_name(latest_totd['author'], tokens)}](https://trackmania.io/#/player/{latest_totd['author']})', False)
+        embed.add_embed_field('Author Medal', format_race_time(latest_totd['authorTime']), False)
+        embed.set_thumbnail(latest_totd['thumbnailUrl'])
+        webhook.add_embed(embed)
+        webhook.execute()
+
+    else:
+        log(f'ERROR: latest map is old ({latest_totd['date']} - {latest_totd['nameClean']})')
 
     write_totd_maps(totd_maps)
 

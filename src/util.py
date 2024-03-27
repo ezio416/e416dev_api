@@ -27,7 +27,7 @@ def log(msg: str, print_term: bool = True) -> None:
 
 
 def now() -> str:
-    utc    = f'{dt.now(tz('UTC')).strftime('%Y-%m-%d %H:%M:%S.%f')}'
+    utc    = dt.now(tz('UTC')).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
     denver = f'Denver {dt.now(tz('America/Denver')).strftime('%H:%M')}'
     paris  = f'Paris {dt.now(tz('Europe/Paris')).strftime('%H:%M')}'
     return f'[{utc} ({denver}, {paris})]'

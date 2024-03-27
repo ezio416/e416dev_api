@@ -3,7 +3,7 @@
 *.log
 
 # Files
-
+latest_totd.txt
 
 # Folders
 __pycache__/
