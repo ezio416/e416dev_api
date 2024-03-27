@@ -7,7 +7,7 @@ import os
 from pytz import timezone as tz
 
 
-log_file: str = f'{os.path.dirname(__file__)}/../../tm.log'
+log_file: str = f'{os.path.dirname(__file__)}/../tm.log'
 
 
 def format_race_time(input_ms: int) -> str:
