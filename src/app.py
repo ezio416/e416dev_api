@@ -15,9 +15,9 @@ from requests import get, post
 from util import format_race_time, log, strip_format_codes
 
 
-db_file:       str   = f'{__file__}/../../tm.db'
+db_file:       str   = f'{os.path.dirname(__file__)}/../../tm.db'
 tm2020_app_id: str   = '86263886-327a-4328-ac69-527f0d20a237'
-uid_file:      str   = f'{__file__}/../../latest_totd.txt'
+uid_file:      str   = f'{os.path.dirname(__file__)}/../../latest_totd.txt'
 url_core:      str   = 'https://prod.trackmania.core.nadeo.online'
 url_live:      str   = 'https://live-services.trackmania.nadeo.live'
 wait_time:     float = 0.5
