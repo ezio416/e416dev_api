@@ -1,5 +1,5 @@
 # c 2024-03-25
-# m 2024-03-26
+# m 2024-03-27
 
 from base64 import b64encode
 from dateutil.parser import parse
@@ -117,8 +117,8 @@ def get_token(audience: str) -> str:
             'https://api.trackmania.com/api/access_token',
             headers={'Content-Type': 'application/x-www-form-urlencoded'},
             data={
-                'grant_type': 'client_credentials',
-                'client_id': os.environ['TM_OAUTH_IDENTIFIER'],
+                'grant_type':    'client_credentials',
+                'client_id':     os.environ['TM_OAUTH_IDENTIFIER'],
                 'client_secret': os.environ['TM_OAUTH_SECRET']
             }
         )
@@ -130,9 +130,9 @@ def get_token(audience: str) -> str:
             f'{url_core}/v2/authentication/token/basic',
             headers={
                 'Authorization': f'Basic {b64encode(f'{os.environ['TM_E416DEV_SERVER_USERNAME']}:{os.environ['TM_E416DEV_SERVER_PASSWORD']}'.encode('utf-8')).decode('ascii')}',
-                'Content-Type': 'application/json',
-                'Ubi-AppId': tm2020_app_id,
-                'User-Agent': os.environ['TM_E416DEV_AGENT'],
+                'Content-Type':  'application/json',
+                'Ubi-AppId':     tm2020_app_id,
+                'User-Agent':    os.environ['TM_E416DEV_AGENT'],
             },
             json={'audience': audience}
         )
