@@ -456,7 +456,7 @@ def main() -> None:
         )
 
         embed = DiscordEmbed(
-            title=f'Track of the Day for {latest_totd['date']}',
+            f'Track of the Day for {latest_totd['date']}',
             color='00a719'
         )
 
