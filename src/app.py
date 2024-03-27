@@ -50,14 +50,11 @@ def get_campaign_maps(tokens: dict) -> dict:
     sleep(wait_time)
 
     req = get(
-        url=f'{url_live}/api/token/campaign/official?length=99&offset=0',
+        f'{url_live}/api/token/campaign/official?length=99&offset=0',
         headers={'Authorization': tokens['live']}
     )
 
-    loaded = loads(req.text)
-    campList = loaded['campaignList']
-
-    for campaign in reversed(campList):
+    for campaign in reversed(loads(req.text)['campaignList']):
         for map in campaign['playlist']:
             uids.append(map['mapUid'])
 
@@ -77,7 +74,7 @@ def get_campaign_maps(tokens: dict) -> dict:
         sleep(wait_time)
 
         req = get(
-            url=f'{url_core}/maps?mapUidList={group}',
+            f'{url_core}/maps?mapUidList={group}',
             headers={'Authorization': tokens['core']}
         )
 
@@ -97,13 +94,13 @@ def get_campaign_maps(tokens: dict) -> dict:
             maps_by_uid[uid]['timestampUnix'] = int(parse(map['timestamp']).timestamp())
             maps_by_uid[uid]['uid']           = uid
 
-        j: int = 0
+    j: int = 0
 
-        for uid in maps_by_uid:
-            maps_by_uid[uid]['campaign'] = ceil((j + 1) / 25) - 1
-            maps_by_uid[uid]['index']    = j
+    for uid in maps_by_uid:
+        maps_by_uid[uid]['campaign'] = ceil((j + 1) / 25) - 1
+        maps_by_uid[uid]['index']    = j
 
-            j += 1
+        j += 1
 
     log('got campaign maps')
 
@@ -126,8 +123,7 @@ def get_token(audience: str) -> str:
             }
         )
 
-        loaded: dict = loads(req.text)
-        token:  str  = loaded['access_token']
+        token: str = loads(req.text)['access_token']
 
     else:
         req = post(
@@ -141,8 +137,7 @@ def get_token(audience: str) -> str:
             json={'audience': audience}
         )
 
-        loaded: dict = loads(req.text)
-        token:  str  = f'nadeo_v1 t={loaded['accessToken']}'
+        token: str = f'nadeo_v1 t={loads(req.text)['accessToken']}'
 
     log(f'got token for {audience}')
 
@@ -155,6 +150,78 @@ def get_tokens() -> dict:
         'live':  get_token('NadeoLiveServices'),
         'oauth': get_token('OAuth')
     }
+
+
+def get_totd_maps(tokens: dict) -> dict:
+    log('getting TOTD maps')
+
+    uid_groups: list = []
+    uid_limit:  int  = 270
+    uids:       list = []
+
+    sleep(wait_time)
+
+    req = get(
+        f'{url_live}/api/token/campaign/month?length=99&offset=0',
+        headers={'Authorization': tokens['live']}
+    )
+
+    maps_by_uid: dict = {}
+
+    for month in reversed(loads(req.text)['monthList']):
+        for day in month['days']:
+            uid: str = day['mapUid']
+            if uid == '' or uid in uids:
+                continue
+
+            uids.append(uid)
+            maps_by_uid[uid] = {'date': f'{month['year']}-{str(month['month']).zfill(2)}-{str(day['monthDay']).zfill(2)}'}
+
+    while True:
+        if len(uids) > uid_limit:
+            uid_groups.append(','.join(uids[:uid_limit]))
+            uids = uids[uid_limit:]
+        else:
+            uid_groups.append(','.join(uids))
+            break
+
+    for i, group in enumerate(uid_groups):
+        print(f'getting TOTD map info ({i + 1}/{len(uid_groups)} groups)')
+
+        sleep(wait_time)
+
+        req = get(
+            f'{url_core}/maps?mapUidList={group}',
+            headers={'Authorization': tokens['core']}
+        )
+
+        for map in loads(req.text):
+            uid: str = map['mapUid']
+            maps_by_uid[uid]['author']        = map['author']
+            maps_by_uid[uid]['authorTime']    = map['authorScore']
+            maps_by_uid[uid]['bronzeTime']    = map['bronzeScore']
+            maps_by_uid[uid]['downloadUrl']   = map['fileUrl']
+            maps_by_uid[uid]['goldTime']      = map['goldScore']
+            maps_by_uid[uid]['id']            = map['mapId']
+            maps_by_uid[uid]['nameClean']     = strip_format_codes(str(map['name']).strip())
+            maps_by_uid[uid]['nameRaw']       = str(map['name']).strip()
+            maps_by_uid[uid]['silverTime']    = map['silverScore']
+            maps_by_uid[uid]['submitter']     = map['submitter']
+            maps_by_uid[uid]['thumbnailUrl']  = map['thumbnailUrl']
+            maps_by_uid[uid]['timestampIso']  = map['timestamp']
+            maps_by_uid[uid]['timestampUnix'] = int(parse(map['timestamp']).timestamp())
+            maps_by_uid[uid]['uid']           = uid
+
+    j: int = 0
+
+    for uid in maps_by_uid:
+        maps_by_uid[uid]['index'] = j
+
+        j += 1
+
+    log('got TOTD maps')
+
+    return maps_by_uid
 
 
 def get_zones(tokens: dict) -> dict:
@@ -248,6 +315,77 @@ def write_campaign_maps(campaign_maps: dict) -> None:
     log('wrote campaign maps to database')
 
 
+def write_totd_maps(totd_maps: dict) -> None:
+    log('writing TOTD maps to database')
+
+    with sql.connect(db_file) as con:
+        cur: sql.Cursor = con.cursor()
+
+        cur.execute('BEGIN')
+        cur.execute('DROP TABLE IF EXISTS TotdMaps')
+        cur.execute(f'''
+            CREATE TABLE IF NOT EXISTS TotdMaps (
+                author        CHAR(36),
+                authorTime    INT,
+                bronzeTime    INT,
+                date          CHAR(10),
+                downloadUrl   CHAR(86),
+                goldTime      INT,
+                id            CHAR(36),
+                mapIndex      INT,
+                nameClean     TEXT,
+                nameRaw       TEXT,
+                silverTime    INT,
+                submitter     CHAR(36),
+                thumbnailUrl  CHAR(90),
+                timestampIso  CHAR(25),
+                timestampUnix INT,
+                uid           VARCHAR(27) PRIMARY KEY
+            );
+        ''')
+
+        for uid in totd_maps:
+            cur.execute(f'''
+                INSERT INTO TotdMaps (
+                    author,
+                    authorTime,
+                    bronzeTime,
+                    date,
+                    downloadUrl,
+                    goldTime,
+                    id,
+                    mapIndex,
+                    nameClean,
+                    nameRaw,
+                    silverTime,
+                    submitter,
+                    thumbnailUrl,
+                    timestampIso,
+                    timestampUnix,
+                    uid
+                ) VALUES (
+                    "{totd_maps[uid]['author']}",
+                    "{totd_maps[uid]['authorTime']}",
+                    "{totd_maps[uid]['bronzeTime']}",
+                    "{totd_maps[uid]['date']}",
+                    "{totd_maps[uid]['downloadUrl']}",
+                    "{totd_maps[uid]['goldTime']}",
+                    "{totd_maps[uid]['id']}",
+                    "{totd_maps[uid]['index']}",
+                    "{totd_maps[uid]['nameClean']}",
+                    "{totd_maps[uid]['nameRaw']}",
+                    "{totd_maps[uid]['silverTime']}",
+                    "{totd_maps[uid]['submitter']}",
+                    "{totd_maps[uid]['thumbnailUrl']}",
+                    "{totd_maps[uid]['timestampIso']}",
+                    "{totd_maps[uid]['timestampUnix']}",
+                    "{totd_maps[uid]['uid']}"
+                )
+            ''')
+
+    log('wrote TOTD maps to database')
+
+
 def write_zones(zones: dict) -> None:
     log('writing zones to database')
 
@@ -267,9 +405,9 @@ def write_zones(zones: dict) -> None:
         for id in zones:
             cur.execute(f'''
                 INSERT INTO ZONES (
-                    id
+                    id,
                     name,
-                    parent,
+                    parent
                 ) VALUES (
                     "{id}",
                     "{zones[id]['name']}",
@@ -283,13 +421,9 @@ def write_zones(zones: dict) -> None:
 def main() -> None:
     tokens: dict = get_tokens()
 
-    campaign_maps: dict = get_campaign_maps(tokens)
-    write_campaign_maps(campaign_maps)
-
-    zones: dict = get_zones(tokens)
-    write_zones(zones)
-
-    print('hi')
+    write_campaign_maps(get_campaign_maps(tokens))
+    write_totd_maps(get_totd_maps(tokens))
+    write_zones(get_zones(tokens))
 
 
 if __name__ == '__main__':
