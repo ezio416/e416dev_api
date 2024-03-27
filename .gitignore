@@ -6,6 +6,7 @@
 latest_totd.txt
 
 # Folders
+env/
 __pycache__/
 
 # Various
