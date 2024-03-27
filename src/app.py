@@ -32,8 +32,7 @@ def get_account_name(id: str, tokens: dict) -> str:
         headers={'Authorization': tokens['oauth']}
     )
 
-    loaded: dict = loads(req.text)
-    name:   str  = loaded[id]
+    name: str = loads(req.text)[id]
 
     log(f'got account name for {id} ({name})')
 
@@ -168,14 +167,20 @@ def get_totd_maps(tokens: dict) -> dict:
 
     maps_by_uid: dict = {}
 
-    for month in reversed(loads(req.text)['monthList']):
+    loaded = loads(req.text)
+    monthList = loaded['monthList']
+
+    for month in reversed(monthList):
         for day in month['days']:
             uid: str = day['mapUid']
             if uid == '' or uid in uids:
                 continue
 
             uids.append(uid)
-            maps_by_uid[uid] = {'date': f'{month['year']}-{str(month['month']).zfill(2)}-{str(day['monthDay']).zfill(2)}'}
+            maps_by_uid[uid] = {
+                'date': f'{month['year']}-{str(month['month']).zfill(2)}-{str(day['monthDay']).zfill(2)}',
+                'season': day['seasonUid']
+            }
 
     while True:
         if len(uids) > uid_limit:
@@ -186,7 +191,7 @@ def get_totd_maps(tokens: dict) -> dict:
             break
 
     for i, group in enumerate(uid_groups):
-        print(f'getting TOTD map info ({i + 1}/{len(uid_groups)} groups)')
+        log(f'getting TOTD map info ({i + 1}/{len(uid_groups)} groups)')
 
         sleep(wait_time)
 
@@ -335,6 +340,7 @@ def write_totd_maps(totd_maps: dict) -> None:
                 mapIndex      INT,
                 nameClean     TEXT,
                 nameRaw       TEXT,
+                season        CHAR(36),
                 silverTime    INT,
                 submitter     CHAR(36),
                 thumbnailUrl  CHAR(90),
@@ -357,6 +363,7 @@ def write_totd_maps(totd_maps: dict) -> None:
                     mapIndex,
                     nameClean,
                     nameRaw,
+                    season,
                     silverTime,
                     submitter,
                     thumbnailUrl,
@@ -374,6 +381,7 @@ def write_totd_maps(totd_maps: dict) -> None:
                     "{totd_maps[uid]['index']}",
                     "{totd_maps[uid]['nameClean']}",
                     "{totd_maps[uid]['nameRaw']}",
+                    "{totd_maps[uid]['season']}",
                     "{totd_maps[uid]['silverTime']}",
                     "{totd_maps[uid]['submitter']}",
                     "{totd_maps[uid]['thumbnailUrl']}",
@@ -421,8 +429,13 @@ def write_zones(zones: dict) -> None:
 def main() -> None:
     tokens: dict = get_tokens()
 
+    totd_maps: dict = get_totd_maps(tokens)
+
+
+
+    write_totd_maps(totd_maps)
+
     write_campaign_maps(get_campaign_maps(tokens))
-    write_totd_maps(get_totd_maps(tokens))
     write_zones(get_zones(tokens))
 
 
