@@ -1,4 +1,3 @@
-python-dateutil
 discord-webhook
+nadeo-api
 pytz
-requests
