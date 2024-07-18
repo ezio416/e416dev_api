@@ -1,8 +1,9 @@
 # c 2024-03-26
-# m 2024-03-27
+# m 2024-07-18
 
 from datetime import datetime as dt
 import os
+import re
 
 from pytz import timezone as tz
 
@@ -36,20 +37,4 @@ def now() -> str:
 
 
 def strip_format_codes(raw: str) -> str:
-    clean: str = ''
-    flag:  int = 0
-
-    for c in raw:
-        if flag and c.lower() in 'gilnostwz$<>':
-            flag = 0
-            continue
-        if flag and c.lower() in '0123456789abcdef':
-            flag -= 1
-            continue
-        if c == '$':
-            flag = 3
-            continue
-        flag = 0
-        clean += c
-
-    return clean.strip()
+    return re.sub(r'\$([0-9a-fA-F]{1,3}|[iIoOnNmMwWsSzZtTgG<>]|[lLhHpP](\[[^\]]+\])?)', '', raw).strip()
