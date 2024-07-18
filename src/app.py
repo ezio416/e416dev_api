@@ -16,8 +16,6 @@ from util import format_race_time, log, strip_format_codes
 
 db_file:   str   = f'{os.path.dirname(__file__)}/../tm.db'
 uid_file:  str   = f'{os.path.dirname(__file__)}/../latest_totd.txt'
-url_core:  str   = 'https://prod.trackmania.core.nadeo.online'
-url_live:  str   = 'https://live-services.trackmania.nadeo.live'
 wait_time: float = 0.5
 
 
