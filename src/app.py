@@ -1,45 +1,37 @@
 # c 2024-03-25
-# m 2024-03-27
+# m 2024-07-18
 
-from base64 import b64encode
-from datetime import datetime as dt
-from json import loads
+from datetime import datetime as dt, timezone
 from math import ceil
 import os
 import sqlite3 as sql
 from time import sleep
 
-from dateutil.parser import parse
 from discord_webhook import DiscordEmbed, DiscordWebhook
+from nadeo_api import auth, core, live, oauth
 from pytz import timezone as tz
-from requests import get, post
 
-from util import format_race_time, log, now, strip_format_codes
-
-
-db_file:       str   = f'{os.path.dirname(__file__)}/../tm.db'
-tm2020_app_id: str   = '86263886-327a-4328-ac69-527f0d20a237'
-uid_file:      str   = f'{os.path.dirname(__file__)}/../latest_totd.txt'
-url_core:      str   = 'https://prod.trackmania.core.nadeo.online'
-url_live:      str   = 'https://live-services.trackmania.nadeo.live'
-wait_time:     float = 0.5
+from util import format_race_time, log, strip_format_codes
 
 
-def get_account_name(id: str, tokens: dict) -> str:
-    log(f'getting account name for {id}')
+db_file:   str   = f'{os.path.dirname(__file__)}/../tm.db'
+uid_file:  str   = f'{os.path.dirname(__file__)}/../latest_totd.txt'
+url_core:  str   = 'https://prod.trackmania.core.nadeo.online'
+url_live:  str   = 'https://live-services.trackmania.nadeo.live'
+wait_time: float = 0.5
+
+
+def get_account_name(tokens: dict, account_id: str) -> str:
+    log(f'getting account name for {account_id}')
 
     sleep(wait_time)
+    req = oauth.account_names_from_ids(tokens['oauth'], account_id)
 
-    req = get(
-        f'https://api.trackmania.com/api/display-names?accountId[]={id}',
-        headers={'Authorization': tokens['oauth']}
-    )
+    account_name: str = req[account_id]
 
-    name: str = loads(req.text)[id]
+    log(f'account name: {account_name}')
 
-    log(f'got account name for {id} ({name})')
-
-    return name
+    return account_name
 
 
 def get_campaign_maps(tokens: dict) -> dict:
@@ -50,13 +42,11 @@ def get_campaign_maps(tokens: dict) -> dict:
     uids:       list = []
 
     sleep(wait_time)
+    maps: dict = live.maps_campaign(tokens['live'], 99)
 
-    req = get(
-        f'{url_live}/api/token/campaign/official?length=99&offset=0',
-        headers={'Authorization': tokens['live']}
-    )
+    campaignList: list[dict] = maps['campaignList']
 
-    for campaign in reversed(loads(req.text)['campaignList']):
+    for campaign in reversed(campaignList):
         for map in campaign['playlist']:
             uids.append(map['mapUid'])
 
@@ -74,13 +64,13 @@ def get_campaign_maps(tokens: dict) -> dict:
         log(f'getting campaign map info ({i + 1}/{len(uid_groups)} groups)')
 
         sleep(wait_time)
-
-        req = get(
-            f'{url_core}/maps?mapUidList={group}',
-            headers={'Authorization': tokens['core']}
+        map_info: dict = core.get(
+            tokens['core'],
+            'maps',
+            {'mapUidList': group}
         )
 
-        for map in loads(req.text):
+        for map in map_info:
             uid: str = map['mapUid']
             maps_by_uid[uid]['author']        = map['author']
             maps_by_uid[uid]['authorTime']    = map['authorScore']
@@ -93,7 +83,7 @@ def get_campaign_maps(tokens: dict) -> dict:
             maps_by_uid[uid]['submitter']     = map['submitter']
             maps_by_uid[uid]['thumbnailUrl']  = map['thumbnailUrl']
             maps_by_uid[uid]['timestampIso']  = map['timestamp']
-            maps_by_uid[uid]['timestampUnix'] = int(parse(map['timestamp']).timestamp())
+            maps_by_uid[uid]['timestampUnix'] = int(dt.fromisoformat(map['timestamp']).timestamp())
             maps_by_uid[uid]['uid']           = uid
 
     j: int = 0
@@ -109,48 +99,36 @@ def get_campaign_maps(tokens: dict) -> dict:
     return maps_by_uid
 
 
-def get_token(audience: str) -> str:
-    log(f'getting token for {audience}')
-
-    sleep(wait_time)
-
-    if audience == 'OAuth':
-        req = post(
-            'https://api.trackmania.com/api/access_token',
-            headers={'Content-Type': 'application/x-www-form-urlencoded'},
-            data={
-                'grant_type':    'client_credentials',
-                'client_id':     os.environ['TM_OAUTH_IDENTIFIER'],
-                'client_secret': os.environ['TM_OAUTH_SECRET']
-            }
-        )
-
-        token: str = loads(req.text)['access_token']
-
-    else:
-        req = post(
-            f'{url_core}/v2/authentication/token/basic',
-            headers={
-                'Authorization': f'Basic {b64encode(f'{os.environ['TM_E416DEV_SERVER_USERNAME']}:{os.environ['TM_E416DEV_SERVER_PASSWORD']}'.encode('utf-8')).decode('ascii')}',
-                'Content-Type':  'application/json',
-                'Ubi-AppId':     tm2020_app_id,
-                'User-Agent':    os.environ['TM_E416DEV_AGENT'],
-            },
-            json={'audience': audience}
-        )
-
-        token: str = f'nadeo_v1 t={loads(req.text)['accessToken']}'
-
-    log(f'got token for {audience}')
-
-    return token
-
-
 def get_tokens() -> dict:
+    log('getting core token')
+    token_core: auth.Token = auth.get_token(
+        auth.audience_core,
+        os.environ['TM_E416DEV_SERVER_USERNAME'],
+        os.environ['TM_E416DEV_SERVER_PASSWORD'],
+        os.environ['TM_E416DEV_AGENT'],
+        True
+    )
+
+    log('getting live token')
+    token_live: auth.Token = auth.get_token(
+        auth.audience_live,
+        os.environ['TM_E416DEV_SERVER_USERNAME'],
+        os.environ['TM_E416DEV_SERVER_PASSWORD'],
+        os.environ['TM_E416DEV_AGENT'],
+        True
+    )
+
+    log('getting oauth token')
+    token_oauth: auth.Token = auth.get_token(
+        auth.audience_oauth,
+        os.environ['TM_OAUTH_IDENTIFIER'],
+        os.environ['TM_OAUTH_SECRET']
+    )
+
     return {
-        'core':  get_token('NadeoServices'),
-        'live':  get_token('NadeoLiveServices'),
-        'oauth': get_token('OAuth')
+        'core': token_core,
+        'live': token_live,
+        'oauth': token_oauth
     }
 
 
@@ -162,16 +140,11 @@ def get_totd_maps(tokens: dict) -> dict:
     uids:       list = []
 
     sleep(wait_time)
-
-    req = get(
-        f'{url_live}/api/token/campaign/month?length=99&offset=0',
-        headers={'Authorization': tokens['live']}
-    )
+    maps: dict = live.maps_totd(tokens['live'], 99)
 
     maps_by_uid: dict = {}
 
-    loaded = loads(req.text)
-    monthList = loaded['monthList']
+    monthList: list[dict] = maps['monthList']
 
     for month in reversed(monthList):
         for day in month['days']:
@@ -197,13 +170,13 @@ def get_totd_maps(tokens: dict) -> dict:
         log(f'getting TOTD map info ({i + 1}/{len(uid_groups)} groups)')
 
         sleep(wait_time)
-
-        req = get(
-            f'{url_core}/maps?mapUidList={group}',
-            headers={'Authorization': tokens['core']}
+        map_info: dict = core.get(
+            tokens['core'],
+            'maps',
+            {'mapUidList': group}
         )
 
-        for map in loads(req.text):
+        for map in map_info:
             uid: str = map['mapUid']
             maps_by_uid[uid]['author']        = map['author']
             maps_by_uid[uid]['authorTime']    = map['authorScore']
@@ -217,7 +190,7 @@ def get_totd_maps(tokens: dict) -> dict:
             maps_by_uid[uid]['submitter']     = map['submitter']
             maps_by_uid[uid]['thumbnailUrl']  = map['thumbnailUrl']
             maps_by_uid[uid]['timestampIso']  = map['timestamp']
-            maps_by_uid[uid]['timestampUnix'] = int(parse(map['timestamp']).timestamp())
+            maps_by_uid[uid]['timestampUnix'] = int(dt.fromisoformat(map['timestamp']).timestamp())
             maps_by_uid[uid]['uid']           = uid
 
     j: int = 0
@@ -238,13 +211,9 @@ def get_zones(tokens: dict) -> dict:
     zones: dict = {}
 
     sleep(wait_time)
+    req = core.zones(tokens['core'])
 
-    req = get(
-        url=f'{url_core}/zones',
-        headers={'Authorization': tokens['core']},
-    )
-
-    for key in loads(req.text.encode('utf-8').decode()):
+    for key in req:
         zones[key['zoneId']] = {
             'name':   key['name'],
             'parent': key['parentId'],
