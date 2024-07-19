@@ -1,7 +1,7 @@
 # c 2024-03-25
 # m 2024-07-18
 
-from datetime import datetime as dt, timezone
+from datetime import datetime as dt
 from math import ceil
 import os
 import sqlite3 as sql
@@ -95,6 +95,55 @@ def get_campaign_maps(tokens: dict) -> dict:
     log('got campaign maps')
 
     return maps_by_uid
+
+
+def get_current_totd_warrior(tokens: dict) -> dict:
+    log('getting totd warrior time')
+
+    sleep(0.5)
+    maps: dict = live.maps_totd(tokens['live'], 1)
+
+    days: list[dict] = maps['monthList'][0]['days']
+
+    for day in reversed(days):
+        if day['campaignId'] == 0:
+            continue
+
+        map_uid: str = day['mapUid']
+        break
+
+    log('reading db for totd info')
+
+    with sql.connect(db_file) as con:
+        con.row_factory = sql.Row
+        cur: sql.Cursor = con.cursor()
+        map: dict = dict(cur.execute(f'SELECT * FROM TotdMaps WHERE uid = "{map_uid}"').fetchone())
+
+    author: str = map['author']
+    author_time: int = map['authorTime']
+    map_date: str = map['date']
+    map_name: str = map['nameRaw']
+
+    log('getting totd records')
+
+    sleep(0.5)
+    records: dict = live.get(
+        tokens['live'],
+        f'api/token/leaderboard/group/Personal_Best/map/{map_uid}/top'
+    )
+
+    world_record: int = records['tops'][0]['top'][0]['score']
+
+    return {
+        map_uid: {
+            'author':       author,
+            'author_time':  author_time,
+            'map_date':     map_date,
+            'map_name':     map_name,
+            'warrior_time': get_warrior_time(author_time, world_record),
+            'world_record': world_record
+        }
+    }
 
 
 def get_tokens() -> dict:
@@ -201,6 +250,15 @@ def get_totd_maps(tokens: dict) -> dict:
     log('got TOTD maps')
 
     return maps_by_uid
+
+
+def get_warrior_time(author_time: int, world_record: int, totd: bool = False) -> int:
+    diff: int = 1
+
+    if (world_record < author_time - (7 if totd else 3)):
+        diff = int((author_time - world_record) / (8 if totd else 4))
+
+    return author_time - diff
 
 
 def get_zones(tokens: dict) -> dict:
@@ -321,6 +379,87 @@ def write_campaign_maps(campaign_maps: dict) -> None:
     log('wrote campaign maps to database')
 
 
+def write_campaign_warriors(warriors: dict) -> None:
+    log('writing campaign warriors to database')
+
+    with sql.connect(db_file) as con:
+        cur: sql.Cursor = con.cursor()
+
+        cur.execute('BEGIN')
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS CampaignWarriors (
+                authorTime  INT,
+                custom      INT,
+                name        TEXT,
+                reason      TEXT,
+                uid         VARCHAR(27) PRIMARY KEY,
+                warriorTime INT,
+                worldRecord INT
+            )
+        ''')
+
+        for uid, map in warriors.items():
+            cur.execute(f'''
+                INSERT INTO CampaignWarriors (
+                    authorTime,
+                    name,
+                    uid,
+                    warriorTime,
+                    worldRecord
+                ) VALUES (
+                    "{map['author_time']}",
+                    "{map['map_name']}",
+                    "{uid}",
+                    "{map['warrior_time']}",
+                    "{map['world_record']}"
+                )
+            ''')
+
+    log('wrote campaign warriors to database')
+
+
+def write_other_warriors(warriors: dict) -> None:
+    log('writing other warriors to database')
+
+    with sql.connect(db_file) as con:
+        cur: sql.Cursor = con.cursor()
+
+        cur.execute('BEGIN')
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS OtherWarriors (
+                authorTime  INT,
+                campaign    TEXT,
+                custom      INT,
+                name        TEXT,
+                reason      TEXT,
+                uid         VARCHAR(27) PRIMARY KEY,
+                warriorTime INT,
+                worldRecord INT
+            )
+        ''')
+
+        for uid, map in warriors.items():
+            cur.execute(f'''
+                INSERT INTO OtherWarriors (
+                    authorTime,
+                    campaign,
+                    name,
+                    uid,
+                    warriorTime,
+                    worldRecord
+                ) VALUES (
+                    "{map['author_time']}",
+                    "{map['campaign']}",
+                    "{map['map_name']}",
+                    "{uid}",
+                    "{map['warrior_time']}",
+                    "{map['world_record']}"
+                )
+            ''')
+
+    log('wrote other warriors to database')
+
+
 def write_totd_maps(totd_maps: dict) -> None:
     log('writing TOTD maps to database')
 
@@ -395,6 +534,48 @@ def write_totd_maps(totd_maps: dict) -> None:
     log('wrote TOTD maps to database')
 
 
+def write_totd_warriors(warriors: dict) -> None:
+    log('writing totd warriors to database')
+
+    with sql.connect(db_file) as con:
+        cur: sql.Cursor = con.cursor()
+
+        cur.execute('BEGIN')
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS TotdWarriors (
+                authorTime  INT,
+                custom      INT,
+                date        CHAR(10),
+                name        TEXT,
+                reason      TEXT,
+                uid         VARCHAR(27) PRIMARY KEY,
+                warriorTime INT,
+                worldRecord INT
+            )
+        ''')
+
+        for uid, map in warriors.items():
+            cur.execute(f'''
+                INSERT INTO TotdWarriors (
+                    authorTime,
+                    date,
+                    name,
+                    uid,
+                    warriorTime,
+                    worldRecord
+                ) VALUES (
+                    "{map['author_time']}",
+                    "{map['map_date']}",
+                    "{map['map_name']}",
+                    "{uid}",
+                    "{map['warrior_time']}",
+                    "{map['world_record']}"
+                )
+            ''')
+
+    log('wrote totd warriors to database')
+
+
 def write_zones(zones: dict) -> None:
     log('writing zones to database')
 
@@ -448,8 +629,11 @@ def run() -> None:
             color='00a719'
         )
 
-        embed.add_embed_field('Map', f'[{latest_totd['nameClean']}](https://trackmania.io/#/totd/leaderboard/{latest_totd['season']}/{latest_totd['uid']})', False)
-        embed.add_embed_field('Author', f'[{get_account_name(latest_totd['author'], tokens)}](https://trackmania.io/#/player/{latest_totd['author']})', False)
+        embed.add_embed_field(
+            'Map',
+            f'[{latest_totd['nameClean']}](https://trackmania.io/#/totd/leaderboard/{latest_totd['season']}/{latest_totd['uid']}) by [{get_account_name(tokens, latest_totd['author'])}](https://trackmania.io/#/player/{latest_totd['author']})',
+            False
+        )
         embed.add_embed_field('Author Medal', format_race_time(latest_totd['authorTime']), False)
         embed.set_thumbnail(latest_totd['thumbnailUrl'])
         webhook.add_embed(embed)
@@ -462,6 +646,38 @@ def run() -> None:
 
     write_campaign_maps(get_campaign_maps(tokens))
     write_zones(get_zones(tokens))
+
+
+def run_totd_warrior() -> None:
+    tokens: dict[auth.Token] = get_tokens()
+
+    totd_warrior: dict = get_current_totd_warrior(tokens)
+    write_totd_warriors(totd_warrior)
+
+    log('sending totd warrior webhook')
+
+    for uid, map in totd_warrior.items():
+        break
+
+    webhook: DiscordWebhook = DiscordWebhook(os.environ['TM_WARRIOR_DISCORD_WEBHOOK_URL'])
+
+    embed: DiscordEmbed = DiscordEmbed(
+        f'Warrior Medal for {map['map_date']}',
+        color='33ccff'
+    )
+
+    embed.add_embed_field(
+        'Map',
+        f'[{strip_format_codes(map['map_name'])}](https://trackmania.io/#/leaderboard/{uid}) by [{get_account_name(tokens, map['author'])}](https://trackmania.io/#/player/{map['author']})',
+        False
+    )
+    embed.add_embed_field('World Record',  format_race_time(map['world_record']), False)
+    embed.add_embed_field('Warrior Medal', format_race_time(map['warrior_time']), False)
+    embed.add_embed_field('Author Medal',  format_race_time(map['author_time']),  False)
+    webhook.add_embed(embed)
+    webhook.execute()
+
+    log('sent totd warrior webhook')
 
 
 def main() -> None:
@@ -477,14 +693,33 @@ def main() -> None:
                     run()
                     break
                 except Exception as e:
-                    log(f'ERROR: {e} | attempt {i + 1}/{attempts} failed, waiting {wait_between_attempts} seconds')
+                    log(f'ERROR (run): {e} | attempt {i + 1}/{attempts} failed, waiting {wait_between_attempts} seconds')
                     sleep(wait_between_attempts)
 
                 if i == attempts - 1:
-                    log('ERROR: max attempts reached')
+                    log('ERROR (run): max attempts reached')
 
                     DiscordWebhook(
                         os.environ['TM_TOTD_NOTIF_DISCORD_WEBHOOK_URL'],
+                        content='<@174350279158792192> ERROR: CHECK SERVER LOGS'
+                    ).execute()
+
+            # print('waiting 60 seconds')
+            sleep(60)
+        elif now_paris.hour == 21 and now_paris.minute == 0:
+            for i in range(attempts):
+                try:
+                    run_totd_warrior()
+                    break
+                except Exception as e:
+                    log(f'ERROR (run_totd_warrior): {e} | attempt {i + 1}/{attempts} failed, waiting {wait_between_attempts} seconds')
+                    sleep(wait_between_attempts)
+
+                if i == attempts - 1:
+                    log('ERROR (run_totd_warrior): max attempts reached')
+
+                    DiscordWebhook(
+                        os.environ['TM_WARRIOR_DISCORD_WEBHOOK_URL'],
                         content='<@174350279158792192> ERROR: CHECK SERVER LOGS'
                     ).execute()
 
