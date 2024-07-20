@@ -1,5 +1,5 @@
 # c 2024-03-25
-# m 2024-07-18
+# m 2024-07-19
 
 from datetime import datetime as dt
 from math import ceil
@@ -255,7 +255,7 @@ def get_totd_maps(tokens: dict) -> dict:
 def get_warrior_time(author_time: int, world_record: int, totd: bool = False) -> int:
     diff: int = 1
 
-    if (world_record < author_time - (7 if totd else 3)):
+    if world_record < author_time - (7 if totd else 3):
         diff = int((author_time - world_record) / (8 if totd else 4))
 
     return author_time - diff
@@ -566,7 +566,7 @@ def write_totd_warriors(warriors: dict) -> None:
                 ) VALUES (
                     "{map['author_time']}",
                     "{map['map_date']}",
-                    "{map['map_name']}",
+                    "{strip_format_codes(map['map_name'])}",
                     "{uid}",
                     "{map['warrior_time']}",
                     "{map['world_record']}"
@@ -652,7 +652,10 @@ def run_totd_warrior() -> None:
     tokens: dict[auth.Token] = get_tokens()
 
     totd_warrior: dict = get_current_totd_warrior(tokens)
-    write_totd_warriors(totd_warrior)
+    try:
+        write_totd_warriors(totd_warrior)
+    except Exception as e:
+        log(f'ERROR (write_totd_warriors): {e}')
 
     log('sending totd warrior webhook')
 
