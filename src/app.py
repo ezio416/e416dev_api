@@ -1,7 +1,9 @@
 # c 2024-03-25
-# m 2024-07-19
+# m 2024-07-21
 
+from base64 import b64encode
 from datetime import datetime as dt
+import json
 from math import ceil
 import os
 import sqlite3 as sql
@@ -10,8 +12,9 @@ from time import sleep
 from discord_webhook import DiscordEmbed, DiscordWebhook
 from nadeo_api import auth, core, live, oauth
 from pytz import timezone as tz
+from requests import get, put
 
-from util import format_race_time, log, strip_format_codes
+from util import format_race_time, log, now, strip_format_codes
 
 
 db_file:   str   = f'{os.path.dirname(__file__)}/../tm.db'
@@ -651,11 +654,20 @@ def run() -> None:
 def run_totd_warrior() -> None:
     tokens: dict[auth.Token] = get_tokens()
 
+    totd_maps: dict = get_totd_maps(tokens)
+    write_totd_maps(totd_maps)
+
     totd_warrior: dict = get_current_totd_warrior(tokens)
+
     try:
         write_totd_warriors(totd_warrior)
     except Exception as e:
-        log(f'ERROR (write_totd_warriors): {e}')
+        log(f'ERROR (write_totd_warriors): {type(e)} | {e}')
+
+    try:
+        send_warriors_to_github()
+    except Exception as e:
+        log(f'ERROR (send_warriors_to_github): {type(e)} | {e}')
 
     log('sending totd warrior webhook')
 
@@ -683,6 +695,45 @@ def run_totd_warrior() -> None:
     log('sent totd warrior webhook')
 
 
+def send_warriors_to_github() -> None:
+    warriors: dict = {}
+
+    with sql.connect(db_file) as con:
+        con.row_factory = sql.Row
+        cur: sql.Cursor = con.cursor()
+
+        cur.execute('BEGIN')
+        for table in ('Campaign', 'Totd', 'Other'):
+            for record in cur.execute(f'SELECT * FROM {table}Warriors').fetchall():
+                warriors[record['uid']] = dict(record)
+
+    url: str = 'https://api.github.com/repos/ezio416/warrior-medal-times/contents/warriors.json'
+
+    headers: dict = {
+        'Accept': 'application/vnd.github+json',
+        'Authorization': f'Bearer {os.environ['TM_WARRIOR_TIMES_GITHUB_TOKEN']}',
+        'X_GitHub-Api-Version': '2022-11-28'
+    }
+
+    log('getting file info from github')
+
+    sha: str = get(url, headers=headers).json()['sha']
+
+    log('sending new file to github')
+
+    put(
+        url,
+        headers=headers,
+        json={
+            'content': b64encode(json.dumps(warriors, indent=4).encode()).decode(),
+            'message': now(False),
+            'sha': sha
+        }
+    )
+
+    log('sent to github')
+
+
 def main() -> None:
     attempts:              int = 10
     wait_between_attempts: int = 10
@@ -696,7 +747,7 @@ def main() -> None:
                     run()
                     break
                 except Exception as e:
-                    log(f'ERROR (run): {e} | attempt {i + 1}/{attempts} failed, waiting {wait_between_attempts} seconds')
+                    log(f'ERROR (run): {type(e)} | {e} | attempt {i + 1}/{attempts} failed, waiting {wait_between_attempts} seconds')
                     sleep(wait_between_attempts)
 
                 if i == attempts - 1:
@@ -715,7 +766,7 @@ def main() -> None:
                     run_totd_warrior()
                     break
                 except Exception as e:
-                    log(f'ERROR (run_totd_warrior): {e} | attempt {i + 1}/{attempts} failed, waiting {wait_between_attempts} seconds')
+                    log(f'ERROR (run_totd_warrior): {type(e)} | {e} | attempt {i + 1}/{attempts} failed, waiting {wait_between_attempts} seconds')
                     sleep(wait_between_attempts)
 
                 if i == attempts - 1:
