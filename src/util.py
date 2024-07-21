@@ -1,5 +1,5 @@
 # c 2024-03-26
-# m 2024-07-18
+# m 2024-07-21
 
 from datetime import datetime as dt
 import os
@@ -29,11 +29,11 @@ def log(msg: str, print_term: bool = True) -> None:
         f.write(f'{text}\n')
 
 
-def now() -> str:
+def now(brackets: bool = True) -> str:
     utc    = dt.now(tz('UTC')).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
     denver = f'Denver {dt.now(tz('America/Denver')).strftime('%H:%M')}'
     paris  = f'Paris {dt.now(tz('Europe/Paris')).strftime('%H:%M')}'
-    return f'[{utc} ({denver}, {paris})]'
+    return f'{'[' if brackets else ''}{utc} ({denver}, {paris}){']' if brackets else ''}'
 
 
 def strip_format_codes(raw: str) -> str:
