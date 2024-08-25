@@ -1,5 +1,5 @@
 # c 2024-03-25
-# m 2024-07-21
+# m 2024-08-25
 
 from base64 import b64encode
 from datetime import datetime as dt
@@ -143,7 +143,7 @@ def get_current_totd_warrior(tokens: dict) -> dict:
             'author_time':  author_time,
             'map_date':     map_date,
             'map_name':     map_name,
-            'warrior_time': get_warrior_time(author_time, world_record),
+            'warrior_time': get_warrior_time(author_time, world_record, True),
             'world_record': world_record
         }
     }
