@@ -430,14 +430,15 @@ def write_other_warriors(warriors: dict) -> None:
         cur.execute('BEGIN')
         cur.execute('''
             CREATE TABLE IF NOT EXISTS OtherWarriors (
-                authorTime  INT,
-                campaign    TEXT,
-                custom      INT,
-                name        TEXT,
-                reason      TEXT,
-                uid         VARCHAR(27) PRIMARY KEY,
-                warriorTime INT,
-                worldRecord INT
+                authorTime    INT,
+                campaign      TEXT,
+                campaignIndex INT,
+                custom        INT,
+                name          TEXT,
+                reason        TEXT,
+                uid           VARCHAR(27) PRIMARY KEY,
+                warriorTime   INT,
+                worldRecord   INT
             )
         ''')
 
@@ -446,17 +447,19 @@ def write_other_warriors(warriors: dict) -> None:
                 INSERT INTO OtherWarriors (
                     authorTime,
                     campaign,
+                    campaignIndex,
                     name,
                     uid,
                     warriorTime,
                     worldRecord
                 ) VALUES (
-                    "{map['author_time']}",
+                    "{map['authorTime']}",
                     "{map['campaign']}",
-                    "{map['map_name']}",
+                    "{map['index']}",
+                    "{map['name']}",
                     "{uid}",
-                    "{map['warrior_time']}",
-                    "{map['world_record']}"
+                    "{map['warriorTime']}",
+                    "{map['worldRecord']}"
                 )
             ''')
 
