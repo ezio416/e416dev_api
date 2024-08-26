@@ -44,7 +44,65 @@ def add_campaign_index_to_other_warriors() -> None:
     pass
 
 
+def recalculate_totd_warriors() -> None:
+    maps: dict = {}
+
+    with sql.connect(app.db_file) as con:
+        con.row_factory = sql.Row
+        cur: sql.Cursor = con.cursor()
+
+        cur.execute('BEGIN')
+        for val in cur.execute('SELECT * FROM TotdWarriors').fetchall():
+            maps[val['uid']] = dict(val)
+
+    with open('totd_warrior_changes.txt', 'a', newline='\n') as f:
+        i: int = 0
+
+        for uid, map in maps.items():
+            new_warrior: int = app.get_warrior_time(map['authorTime'], map['worldRecord'], True)
+
+            if map['warriorTime'] != new_warrior:
+                # line: str = f'{map['date']}: {util.format_race_time(map['warriorTime'])} -> {util.format_race_time(new_warrior)}'
+                # print(line)
+                # f.write(f'{line}\n')
+                map['warriorTime'] = new_warrior
+                i += 1
+
+        print(f'found {i}/{len(maps)} incorrect warrior times')
+
+    with sql.connect(app.db_file) as con:
+        cur: sql.Cursor = con.cursor()
+
+        cur.execute('BEGIN')
+
+        for uid, map in maps.items():
+            cur.execute(f'''
+                REPLACE INTO TotdWarriors (
+                    authorTime,
+                    custom,
+                    date,
+                    name,
+                    reason,
+                    uid,
+                    warriorTime,
+                    worldRecord
+                ) VALUES (
+                    "{map['authorTime']}",
+                    "{map['custom']}",
+                    "{map['date']}",
+                    "{map['name']}",
+                    "{map['reason']}",
+                    "{uid}",
+                    "{map['warriorTime']}",
+                    "{map['worldRecord']}"
+                )
+            ''')
+
+    pass
+
+
 def main() -> None:
+    # recalculate_totd_warriors()
     pass
 
 
