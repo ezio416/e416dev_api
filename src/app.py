@@ -270,7 +270,10 @@ def get_warrior_time(author_time: int, world_record: int, factor: float | None =
             - `1.000` - WR (`8.000`)
     '''
 
-    return author_time - max(int((author_time - world_record) * (factor if factor is not None else 0.25)), 1)
+    return author_time - max(
+        int((author_time - world_record) * (factor if factor is not None else 0.25)),
+        1
+    )
 
 
 def get_zones(tokens: dict) -> dict:
