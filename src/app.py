@@ -1,5 +1,5 @@
 # c 2024-03-25
-# m 2024-08-25
+# m 2024-09-16
 
 from base64 import b64encode
 from datetime import datetime as dt
@@ -14,7 +14,10 @@ from nadeo_api import auth, core, live, oauth
 from pytz import timezone as tz
 from requests import get, put
 
-from util import format_race_time, log, now, strip_format_codes
+try:
+    from .util import format_race_time, log, now, strip_format_codes
+except ImportError:
+    from util import format_race_time, log, now, strip_format_codes
 
 
 db_file:   str   = f'{os.path.dirname(__file__)}/../tm.db'
@@ -103,7 +106,7 @@ def get_campaign_maps(tokens: dict) -> dict:
 def get_current_totd_warrior(tokens: dict) -> dict:
     log('getting totd warrior time')
 
-    sleep(0.5)
+    sleep(wait_time)
     maps: dict = live.maps_totd(tokens['live'], 1)
 
     days: list[dict] = maps['monthList'][0]['days']
@@ -129,7 +132,7 @@ def get_current_totd_warrior(tokens: dict) -> dict:
 
     log('getting totd records')
 
-    sleep(0.5)
+    sleep(wait_time)
     records: dict = live.get(
         tokens['live'],
         f'api/token/leaderboard/group/Personal_Best/map/{map_uid}/top'
@@ -143,7 +146,7 @@ def get_current_totd_warrior(tokens: dict) -> dict:
             'author_time':  author_time,
             'map_date':     map_date,
             'map_name':     map_name,
-            'warrior_time': get_warrior_time(author_time, world_record, True),
+            'warrior_time': get_warrior_time(author_time, world_record, 0.125),
             'world_record': world_record
         }
     }
@@ -255,13 +258,19 @@ def get_totd_maps(tokens: dict) -> dict:
     return maps_by_uid
 
 
-def get_warrior_time(author_time: int, world_record: int, totd: bool = False) -> int:
-    diff: int = 1
+def get_warrior_time(author_time: int, world_record: int, factor: float | None = 0.25) -> int:
+    '''
+    - `factor` is offset from AT
+        - between `0.0` and `1.0`
+        - examples, given AT is `10.000` and WR is `8.000`:
+            - `0.000` - AT (`10.000`)
+            - `0.125` - 1/8 of the way between AT and WR (`9.750`) (default for TOTDs)
+            - `0.250` - 1/4 of the way between AT and WR (`9.500`) (default, default for campaigns)
+            - `0.750` - 3/4 of the way between AT and WR (`8.500`)
+            - `1.000` - WR (`8.000`)
+    '''
 
-    if world_record < author_time - (7 if totd else 3):
-        diff = int((author_time - world_record) / (8 if totd else 4))
-
-    return author_time - diff
+    return author_time - max(int((author_time - world_record) * (factor if factor is not None else 0.25)), 1)
 
 
 def get_zones(tokens: dict) -> dict:
